@@ -1,0 +1,38 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build the Docker image
+      run: IMAGE=local-aws-cloud-controller-manager make build
+    - name: Extract binary from image and compress it
+      run: |
+        container_id=$(docker create local-aws-cloud-controller-manager)
+        docker cp ${container_id}:/bin/aws-cloud-controller-manager ./aws-cloud-controller-manager
+        docker rm ${container_id}
+        tar czvf aws-cloud-controller-manager-amd64.tar.gz aws-cloud-controller-manager
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.run_number }}
+        release_name: Release ${{ github.run_number }}
+        body: Built from ${{ github.sha }}
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./aws-cloud-controller-manager-amd64.tar.gz
+        asset_name: aws-cloud-controller-manager-amd64.tar.gz
+        asset_content_type: application/gzip
